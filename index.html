@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GroupSync – Gemeinsame Dokumente & Projektübersicht</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons (Lizenzfrei) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- React & Babel (CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // --- INITIALE BEISPIELDATEN ---
+    const INITIAL_DATA = {
+      categories: ["Allgemein", "Recherche & Daten", "Ausarbeitung", "Präsentation", "Organisation"],
+      members: [
+        { id: "m1", name: "Anna M.", role: "Projektleitung & Struktur", phone: "+436641234567", color: "bg-emerald-600" },
+        { id: "m2", name: "Lukas K.", role: "Datenanalyse & Tabellen", phone: "+436609876543", color: "bg-blue-600" },
+        { id: "m3", name: "Sarah W.", role: "Redaktion & Korrektur", phone: "+436761122334", color: "bg-purple-600" },
+        { id: "m4", name: "Max B.", role: "Layout & Grafiken", phone: "+436995566778", color: "bg-amber-600" }
+      ],
+      meetings: [
+        { id: "mt1", title: "Kick-Off & Aufgabenverteilung", date: "2026-11-02", time: "17:00", location: "Online / Zoom", type: "Treffen" },
+        { id: "mt2", title: "Zwischenstand-Besprechung", date: "2026-11-12", time: "18:30", location: "Seminarraum 3", type: "Treffen" },
+        { id: "mt3", title: "Finale Abgabe Gesamtdokument", date: "2026-11-25", time: "23:59", location: "Upload-Portal", type: "Abgabe" }
+      ],
+      documents: [
+        {
+          id: "d1",
+          title: "Hauptbericht: Projektanalyse & Ergebnisse",
+          category: "Ausarbeitung",
+          deadline: "2026-11-20",
+          description: "Gemeinsamer Hauptbericht mit Einleitung, Methodik, Auswertung und Fazit.",
+          responsibilities: [
+            { memberId: "m1", task: "Kapitel 1: Einleitung & Zielsetzung" },
+            { memberId: "m2", task: "Kapitel 2: Datenauswertung & Statistik" },
+            { memberId: "m3", task: "Kapitel 3: Diskussion & Endkorrektur" },
+            { memberId: "m4", task: "Deckblatt, Grafiken & Formatierung" }
+          ],
+          workflow: [
+            { id: "w1", step: 1, title: "Grundstruktur & Einleitung anlegen", memberId: "m1", done: true, completedAt: "25.10.2026" },
+            { id: "w2", step: 2, title: "Rohdaten & Messwerte einfügen (wartet auf Schritt 1)", memberId: "m2", done: false, completedAt: null },
+            { id: "w3", step: 3, title: "Text ausformulieren & Korrekturlesen (wartet auf Schritt 2)", memberId: "m3", done: false, completedAt: null },
+            { id: "w4", step: 4, title: "Finales Layout & PDF-Export (wartet auf Schritt 3)", memberId: "m4", done: false, completedAt: null }
+          ],
+          content: "# Hauptbericht: Projektanalyse\n\n## 1. Einleitung (Anna M.)\nDie Grundstruktur steht bereits. Hier wird das Ziel unserer Arbeit beschrieben...\n\n## 2. Datenauswertung (Lukas K.)\n[Hier bitte die Tabellen und Ergebnisse eintragen, sobald bereit]\n\n## 3. Diskussion & Fazit (Sarah W.)\n[Folgt nach der Datenauswertung]",
+          notes: [
+            { id: "n1", author: "Anna M.", text: "Ich habe Kapitel 1 fertiggestellt. Lukas, du kannst jetzt mit den Daten starten!", time: "Gestern, 14:20" }
+          ]
+        },
+        {
+          id: "d2",
+          title: "Literatur- & Quellenverzeichnis",
+          category: "Recherche & Daten",
+          deadline: "2026-11-10",
+          description: "Sammlung aller verwendeten Quellen und Richtlinien.",
+          responsibilities: [
+            { memberId: "m3", task: "Quellen prüfen & einheitlich formatieren" },
+            { memberId: "m1", task: "Fachliteratur ergänzen" }
+          ],
+          workflow: [
+            { id: "w2_1", step: 1, title: "Literaturliste zusammentragen", memberId: "m1", done: true, completedAt: "24.10.2026" },
+            { id: "w2_2", step: 2, title: "Zitierweise prüfen & finalisieren", memberId: "m3", done: true, completedAt: "26.10.2026" }
+          ],
+          content: "# Literaturverzeichnis\n\n- Müller et al. (2024): Grundlagen der Projektarbeit.\n- Schmidt (2025): Handbuch für Gruppenarbeiten.\n",
+          notes: []
+        }
+      ]
+    };
+
+    function App() {
+      // Daten aus LocalStorage laden oder Initialdaten nutzen
+      const [data, setData] = useState(() => {
+        const saved = localStorage.getItem("groupsync_data_v1");
+        return saved ? JSON.parse(saved) : INITIAL_DATA;
+      });
+
+      const [activeTab, setActiveTab] = useState("documents"); // documents | calendar | team | settings
+      const [selectedCategory, setSelectedCategory] = useState("Alle");
+      const [selectedDocId, setSelectedDocId] = useState(data.documents[0]?.id || null);
+      const [docViewMode, setDocViewMode] = useState("split"); // sheet | editor | split
+      const [notificationModal, setNotificationModal] = useState(null);
+
+      // Formular-States
+      const [newDocModal, setNewDocModal] = useState(false);
+      const [newDocForm, setNewDocForm] = useState({ title: "", category: "Allgemein", deadline: "", description: "" });
+      const [newStepForm, setNewStepForm] = useState({ title: "", memberId: "" });
+      const [newRespForm, setNewRespForm] = useState({ task: "", memberId: "" });
+      const [newNoteText, setNewNoteText] = useState("");
+      const [newMeetingForm, setNewMeetingForm] = useState({ title: "", date: "", time: "", location: "", type: "Treffen" });
+      const [newMemberForm, setNewMemberForm] = useState({ name: "", role: "", phone: "" });
+      const [newCategoryName, setNewCategoryName] = useState("");
+
+      // Automatisch im Browser speichern
+      useEffect(() => {
+        localStorage.setItem("groupsync_data_v1", JSON.stringify(data));
+      }, [data]);
+
+      const activeDoc = data.documents.find(d => d.id === selectedDocId) || data.documents[0];
+
+      // Hilfsfunktionen
+      const getMember = (id) => data.members.find(m => m.id === id) || { name: "Unbekannt", phone: "", color: "bg-slate-500", role: "" };
+
+      const getProgress = (doc) => {
+        if (!doc.workflow || doc.workflow.length === 0) return 0;
+        const doneCount = doc.workflow.filter(w => w.done).length;
+        return Math.round((doneCount / doc.workflow.length) * 100);
+      };
+
+      const getDaysLeft = (dateStr) => {
+        if (!dateStr) return null;
+        const diff = new Date(dateStr) - new Date();
+        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+      };
+
+      // WhatsApp & SMS Links generieren
+      const sendWhatsApp = (phone, message) => {
+        const cleanPhone = phone.replace(/[^0-9+]/g, "").replace(/^\+/, "");
+        const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+        window.open(url, "_blank");
+      };
+
+      const sendSMS = (phone, message) => {
+        const cleanPhone = phone.replace(/[^0-9+]/g, "");
+        const url = `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;
+        window.location.href = url;
+      };
+
+      // Abhängigkeits-Schritt umschalten (Person A -> Person B)
+      const toggleWorkflowStep = (docId, stepIndex) => {
+        setData(prev => {
+          const docs = prev.documents.map(doc => {
+            if (doc.id !== docId) return doc;
+            const newWorkflow = [...doc.workflow];
+            const currentStep = newWorkflow[stepIndex];
+
+            // Prüfen, ob vorheriger Schritt erledigt ist
+            if (stepIndex > 0 && !newWorkflow[stepIndex - 1].done && !currentStep.done) {
+              alert(`Abhängigkeit beachten: Schritt ${stepIndex} (${getMember(newWorkflow[stepIndex - 1].memberId).name}) muss zuerst abgeschlossen werden!`);
+              return doc;
+            }
+
+            const nowDone = !currentStep.done;
+            newWorkflow[stepIndex] = {
+              ...currentStep,
+              done: nowDone,
+              completedAt: nowDone ? new Date().toLocaleDateString("de-DE") : null
+            };
+
+            // Wenn erledigt und es eine nächste Person (Person B) gibt -> Benachrichtigung anbieten!
+            if (nowDone && stepIndex + 1 < newWorkflow.length) {
+              const nextStep = newWorkflow[stepIndex + 1];
+              const personA = getMember(currentStep.memberId);
+              const personB = getMember(nextStep.memberId);
+              setNotificationModal({
+                title: "Vorarbeit erledigt! Nächste Person benachrichtigen?",
+                recipient: personB,
+                message: `Hallo ${personB.name}! 👋\n${personA.name} hat gerade den Schritt "${currentStep.title}" im Dokument "${doc.title}" fertiggestellt.\n\nDu kannst jetzt mit deinem Teil starten: "${nextStep.title}".\nAbgabetermin ist der ${doc.deadline}.`
+              });
+            }
+
+            return { ...doc, workflow: newWorkflow };
+          });
+          return { ...prev, documents: docs };
+        });
+      };
+
+      // Dokument-Text aktualisieren
+      const updateDocContent = (content) => {
+        setData(prev => ({
+          ...prev,
+          documents: prev.documents.map(d => d.id === activeDoc.id ? { ...d, content } : d)
+        }));
+      };
+
+      // Neuen Workflow-Schritt hinzufügen
+      const addWorkflowStep = (e) => {
+        e.preventDefault();
+        if (!newStepForm.title || !newStepForm.memberId) return;
+        setData(prev => ({
+          ...prev,
+          documents: prev.documents.map(d => {
+            if (d.id !== activeDoc.id) return d;
+            const nextStepNum = d.workflow.length + 1;
+            return {
+              ...d,
+              workflow: [...d.workflow, {
+                id: "w_" + Date.now(),
+                step: nextStepNum,
+                title: newStepForm.title,
+                memberId: newStepForm.memberId,
+                done: false,
+                completedAt: null
+              }]
+            };
+          })
+        }));
+        setNewStepForm({ title: "", memberId: "" });
+      };
+
+      // Neue Zuständigkeit hinzufügen
+      const addResponsibility = (e) => {
+        e.preventDefault();
+        if (!newRespForm.task || !newRespForm.memberId) return;
+        setData(prev => ({
+          ...prev,
+          documents: prev.documents.map(d => {
+            if (d.id !== activeDoc.id) return d;
+            return {
+              ...d,
+              responsibilities: [...d.responsibilities, { memberId: newRespForm.memberId, task: newRespForm.task }]
+            };
+          })
+        }));
+        setNewRespForm({ task: "", memberId: "" });
+      };
+
+      // Notiz hinzufügen
+      const addNote = (e) => {
+        e.preventDefault();
+        if (!newNoteText.trim()) return;
+        setData(prev => ({
+          ...prev,
+          documents: prev.documents.map(d => {
+            if (d.id !== activeDoc.id) return d;
+            return {
+              ...d,
+              notes: [{ id: "n_" + Date.now(), author: "Teammitglied", text: newNoteText, time: new Date().toLocaleString("de-DE") }, ...d.notes]
+            };
+          })
+        }));
+        setNewNoteText("");
+      };
+
+      // Neues Dokument anlegen
+      const createNewDocument = (e) => {
+        e.preventDefault();
+        if (!newDocForm.title) return;
+        const newDoc = {
+          id: "d_" + Date.now(),
+          title: newDocForm.title,
+          category: newDocForm.category,
+          deadline: newDocForm.deadline || "2026-12-01",
+          description: newDocForm.description || "Gemeinsames Dokument",
+          responsibilities: [],
+          workflow: [],
+          content: `# ${newDocForm.title}\n\nHier gemeinsam schreiben...`,
+          notes: []
+        };
+        setData(prev => ({ ...prev, documents: [...prev.documents, newDoc] }));
+        setSelectedDocId(newDoc.id);
+        setNewDocModal(false);
+        setNewDocForm({ title: "", category: "Allgemein", deadline: "", description: "" });
+      };
+
+      // Daten als JSON exportieren (zum Teilen per WhatsApp/GitHub)
+      const exportData = () => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `groupsync-stand-${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+      };
+
+      // Daten importieren
+      const importData = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const imported = JSON.parse(event.target.result);
+            setData(imported);
+            alert("Projektstand erfolgreich geladen!");
+          } catch (err) {
+            alert("Ungültige Datei.");
+          }
+        };
+        reader.readAsText(file);
+      };
+
+      const filteredDocs = selectedCategory === "Alle"
+        ? data.documents
+        : data.documents.filter(d => d.category === selectedCategory);
+
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-100">
+          {/* TOP NAVIGATION */}
+          <header className="bg-slate-900 text-white shadow-md sticky top-0 z-30">
+            <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center font-bold text-xl shadow">
+                  <i className="fa-solid fa-people-group"></i>
+                </div>
+                <div>
+                  <h1 className="font-bold text-lg leading-tight">GroupSync</h1>
+                  <p className="text-xs text-slate-400">Dokumente, Abhängigkeiten & WhatsApp/SMS-Reminder</p>
+                </div>
+              </div>
+
+              <nav className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl">
+                <button
+                  onClick={() => setActiveTab("documents")}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === "documents" ? "bg-emerald-500 text-white" : "text-slate-300 hover:text-white"}`}
+                >
+                  <i className="fa-solid fa-file-lines mr-1.5"></i>Dokumente & Steckbriefe
+                </button>
+                <button
+                  onClick={() => setActiveTab("calendar")}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === "calendar" ? "bg-emerald-500 text-white" : "text-slate-300 hover:text-white"}`}
+                >
+                  <i className="fa-solid fa-calendar-check mr-1.5"></i>Treffen & Abgaben
+                </button>
+                <button
+                  onClick={() => setActiveTab("team")}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeTab === "team" ? "bg-emerald-500 text-white" : "text-slate-300 hover:text-white"}`}
+                >
+                  <i className="fa-solid fa-users mr-1.5"></i>Team & Kontakte
+                </button>
+              </nav>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={exportData}
+                  title="Projektstand als Datei speichern & mit Gruppe teilen"
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg border border-slate-700 flex items-center gap-1.5"
+                >
+                  <i className="fa-solid fa-download text-emerald-400"></i> Stand speichern
+                </button>
+                <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg border border-slate-700 flex items-center gap-1.5 cursor-pointer">
+                  <i className="fa-solid fa-upload text-blue-400"></i> Stand laden
+                  <input type="file" accept=".json" onChange={importData} className="hidden" />
+                </label>
+              </div>
+            </div>
+          </header>
+
+          {/* MAIN CONTENT */}
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4">
+            {/* TAB 1: DOKUMENTE & ÜBERSICHTSBLATT */}
+            {activeTab === "documents" && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* LINKE SEITENLEISTE: KATEGORIEN & DOKUMENTENLISTE */}
+                <div className="lg:col-span-3 space-y-4">
+                  <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="font-bold text-sm uppercase tracking-wider text-slate-500">Kategorien</h2>
+                      <button
+                        onClick={() => setNewDocModal(true)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1"
+                      >
+                        <i className="fa-solid fa-plus"></i> Neues Dok
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      <button
+                        onClick={() => setSelectedCategory("Alle")}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium ${selectedCategory === "Alle" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                      >
+                        Alle ({data.documents.length})
+                      </button>
+                      {data.categories.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => setSelectedCategory(cat)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium ${selectedCategory === cat ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Neue Kategorie hinzufügen */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (newCategoryName && !data.categories.includes(newCategoryName)) {
+                          setData(prev => ({ ...prev, categories: [...prev.categories, newCategoryName] }));
+                          setNewCategoryName("");
+                        }
+                      }}
+                      className="flex gap-1 mb-4"
+                    >
+                      <input
+                        type="text"
+                        placeholder="Neue Kategorie..."
+                        value={newCategoryName}
+                        onChange={e => setNewCategoryName(e.target.value)}
+                        className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-200"
+                      />
+                      <button type="submit" className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-bold">+</button>
+                    </form>
+
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-slate-400 mb-2">Dokumente</h3>
+                    <div className="space-y-2">
+                      {filteredDocs.map(doc => {
+                        const prog = getProgress(doc);
+                        const days = getDaysLeft(doc.deadline);
+                        const isSelected = activeDoc && activeDoc.id === doc.id;
+                        return (
+                          <div
+                            key={doc.id}
+                            onClick={() => setSelectedDocId(doc.id)}
+                            className={`p-3 rounded-xl border cursor-pointer transition ${
+                              isSelected
+                                ? "bg-emerald-50/70 border-emerald-500 shadow-sm"
+                                : "bg-white border-slate-200 hover:border-slate-300"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                {doc.category}
+                              </span>
+                              <span className={`text-[11px] font-semibold ${days < 3 ? "text-red-600" : "text-slate-500"}`}>
+                                <i className="fa-regular fa-clock mr-1"></i>
+                                {doc.deadline}
+                              </span>
+                            </div>
+                            <h4 className="font-bold text-sm text-slate-800 mb-2">{doc.title}</h4>
+                            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-emerald-500 h-full transition-all" style={{ width: `${prog}%` }}></div>
+                            </div>
+                            <div className="flex justify-between items-center mt-1 text-[11px] text-slate-500">
+                              <span>Fortschritt</span>
+                              <span className="font-bold text-slate-700">{prog}%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* RECHTER HAUPTBEREICH: ÜBERSICHTSBLATT (STECKBRIEF) & EDITOR */}
+                {activeDoc ? (
+                  <div className="lg:col-span-9 space-y-6">
+                    {/* KOPFZEILE DES DOKUMENTS */}
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">
+                            {activeDoc.category}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            <i className="fa-solid fa-calendar-day mr-1"></i>
+                            Abgabe: <strong>{activeDoc.deadline}</strong> ({getDaysLeft(activeDoc.deadline)} Tage übrig)
+                          </span>
+                        </div>
+                        <h2 className="text-2xl font-bold text-slate-900">{activeDoc.title}</h2>
+                        <p className="text-sm text-slate-600">{activeDoc.description}</p>
+                      </div>
+
+                      {/* ANSICHTS-UMSCHALTER */}
+                      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                        <button
+                          onClick={() => setDocViewMode("sheet")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${docViewMode === "sheet" ? "bg-white shadow text-slate-900" : "text-slate-600"}`}
+                        >
+                          <i className="fa-solid fa-clipboard-list mr-1"></i> Nur Übersichtsblatt
+                        </button>
+                        <button
+                          onClick={() => setDocViewMode("split")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${docViewMode === "split" ? "bg-white shadow text-slate-900" : "text-slate-600"}`}
+                        >
+                          <i className="fa-solid fa-columns mr-1"></i> Beides (Split)
+                        </button>
+                        <button
+                          onClick={() => setDocViewMode("editor")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${docViewMode === "editor" ? "bg-white shadow text-slate-900" : "text-slate-600"}`}
+                        >
+                          <i className="fa-solid fa-pen-to-square mr-1"></i> Nur Text-Editor
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={`grid grid-cols-1 ${docViewMode === "split" ? "xl:grid-cols-2" : ""} gap-6`}>
+                      {/* 1. DAS ÜBERSICHTSBLATT (STECKBRIEF) */}
+                      {(docViewMode === "sheet" || docViewMode === "split") && (
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 space-y-6">
+                          <div className="flex items-center justify-between border-b pb-3">
+                            <div>
+                              <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                                <i className="fa-solid fa-id-card text-emerald-600"></i>
+                                Übersichtsblatt (Dokumenten-Steckbrief)
+                              </h3>
+                              <p className="text-xs text-slate-500">Zuständigkeiten, Fortschritt & Abhängigkeits-Kette</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-2xl font-extrabold text-emerald-600">{getProgress(activeDoc)}%</span>
+                              <span className="block text-[10px] uppercase tracking-wider text-slate-400">Gesamtfortschritt</span>
+                            </div>
+                          </div>
+
+                          {/* ABHÄNGIGKEITS-KETTE (PERSON A -> PERSON B) */}
+                          <div>
+                            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-3 flex items-center justify-between">
+                              <span><i className="fa-solid fa-diagram-next mr-1.5 text-blue-600"></i>Abhängigkeiten & Reihenfolge (Person A ➔ Person B)</span>
+                            </h4>
+
+                            <div className="space-y-3">
+                              {activeDoc.workflow.map((w, idx) => {
+                                const member = getMember(w.memberId);
+                                const prevDone = idx === 0 ? true : activeDoc.workflow[idx - 1].done;
+                                const isBlocked = !prevDone && !w.done;
+                                const isActive = prevDone && !w.done;
+
+                                return (
+                                  <div
+                                    key={w.id}
+                                    className={`p-3.5 rounded-xl border transition relative ${
+                                      w.done
+                                        ? "bg-emerald-50/50 border-emerald-200"
+                                        : isActive
+                                        ? "bg-blue-50/60 border-blue-400 shadow-sm"
+                                        : "bg-slate-50 border-slate-200 opacity-75"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex items-start gap-3">
+                                        <button
+                                          onClick={() => toggleWorkflowStep(activeDoc.id, idx)}
+                                          className={`mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs transition ${
+                                            w.done
+                                              ? "bg-emerald-600 text-white"
+                                              : isActive
+                                              ? "bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-50"
+                                              : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                          }`}
+                                        >
+                                          {w.done ? <i className="fa-solid fa-check"></i> : idx + 1}
+                                        </button>
+                                        <div>
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className={`font-semibold text-sm ${w.done ? "line-through text-slate-500" : "text-slate-900"}`}>
+                                              {w.title}
+                                            </span>
+                                            {w.done && (
+                                              <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-medium">
+                                                Erledigt ({w.completedAt})
+                                              </span>
+                                            )}
+                                            {isActive && (
+                                              <span className="text-[11px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-medium animate-pulse">
+                                                Jetzt an der Reihe!
+                                              </span>
+                                            )}
+                                            {isBlocked && (
+                                              <span className="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                                                <i className="fa-solid fa-lock mr-1"></i>
+                                                Wartet auf {getMember(activeDoc.workflow[idx - 1].memberId).name}
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="flex items-center gap-2 mt-1.5">
+                                            <span className={`text-xs text-white px-2 py-0.5 rounded-md font-medium ${member.color}`}>
+                                              {member.name}
+                                            </span>
+                                            <span className="text-xs text-slate-500">{member.role}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Direkt-Erinnerung per WhatsApp oder SMS */}
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() =>
+                                            sendWhatsApp(
+                                              member.phone,
+                                              `Hallo ${member.name}! Kurze Erinnerung zum Dokument "${activeDoc.title}": Dein Schritt "${w.title}" steht an (Abgabe: ${activeDoc.deadline}).`
+                                            )
+                                          }
+                                          title={`WhatsApp an ${member.name} senden`}
+                                          className="p-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs"
+                                        >
+                                          <i className="fa-brands fa-whatsapp"></i>
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            sendSMS(
+                                              member.phone,
+                                              `Hallo ${member.name}! Erinnerung zum Dokument "${activeDoc.title}": Schritt "${w.title}" (Abgabe: ${activeDoc.deadline}).`
+                                            )
+                                          }
+                                          title={`SMS an ${member.name} senden`}
+                                          className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs"
+                                        >
+                                          <i className="fa-solid fa-comment-sms"></i>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Neuen Abhängigkeitsschritt hinzufügen */}
+                            <form onSubmit={addWorkflowStep} className="mt-3 flex flex-wrap sm:flex-nowrap gap-2">
+                              <input
+                                type="text"
+                                placeholder="Nächster abhängiger Arbeitsschritt..."
+                                value={newStepForm.title}
+                                onChange={e => setNewStepForm({ ...newStepForm, title: e.target.value })}
+                                className="flex-1 text-xs px-3 py-2 rounded-xl border border-slate-200"
+                              />
+                              <select
+                                value={newStepForm.memberId}
+                                onChange={e => setNewStepForm({ ...newStepForm, memberId: e.target.value })}
+                                className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                              >
+                                <option value="">Person wählen...</option>
+                                {data.members.map(m => (
+                                  <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                              </select>
+                              <button type="submit" className="px-3 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800">
+                                + Schritt
+                              </button>
+                            </form>
+                          </div>
+
+                          {/* INVOLVIERTE PERSONEN & FESTE ZUSTÄNDIGKEITEN */}
+                          <div className="border-t pt-4">
+                            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-3">
+                              <i className="fa-solid fa-user-check mr-1.5 text-emerald-600"></i>
+                              Involvierte Personen & Zuständigkeiten im Dokument
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {activeDoc.responsibilities.map((r, i) => {
+                                const m = getMember(r.memberId);
+                                return (
+                                  <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-full ${m.color} text-white flex items-center justify-center font-bold text-xs shrink-0`}>
+                                      {m.name.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-bold text-slate-800 truncate">{m.name}</p>
+                                      <p className="text-xs text-slate-600">{r.task}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <form onSubmit={addResponsibility} className="mt-3 flex flex-wrap sm:flex-nowrap gap-2">
+                              <input
+                                type="text"
+                                placeholder="Zuständigkeit (z.B. Kapitel 4, Korrektur)..."
+                                value={newRespForm.task}
+                                onChange={e => setNewRespForm({ ...newRespForm, task: e.target.value })}
+                                className="flex-1 text-xs px-3 py-2 rounded-xl border border-slate-200"
+                              />
+                              <select
+                                value={newRespForm.memberId}
+                                onChange={e => setNewRespForm({ ...newRespForm, memberId: e.target.value })}
+                                className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                              >
+                                <option value="">Person wählen...</option>
+                                {data.members.map(m => (
+                                  <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                              </select>
+                              <button type="submit" className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded-xl">
+                                + Zuweisen
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. GEMEINSAMER DOKUMENTEN-EDITOR & ÜBERGABE-NOTIZEN */}
+                      {(docViewMode === "editor" || docViewMode === "split") && (
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
+                          <div>
+                            <div className="flex items-center justify-between border-b pb-3 mb-3">
+                              <div>
+                                <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                                  <i className="fa-solid fa-file-pen text-blue-600"></i>
+                                  Gemeinsamer Dokumenten-Editor
+                                </h3>
+                                <p className="text-xs text-slate-500">Alle Änderungen werden sofort automatisch gespeichert</p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(activeDoc.content);
+                                  alert("Dokumententext in die Zwischenablage kopiert!");
+                                }}
+                                className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium"
+                              >
+                                <i className="fa-regular fa-copy mr-1"></i> Text kopieren
+                              </button>
+                            </div>
+
+                            <textarea
+                              value={activeDoc.content}
+                              onChange={e => updateDocContent(e.target.value)}
+                              rows={14}
+                              className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                              placeholder="Hier gemeinsam am Dokument schreiben..."
+                            />
+                          </div>
+
+                          {/* KOMMENTARE & ÜBERGABE-NOTIZEN */}
+                          <div className="border-t pt-4">
+                            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2">
+                              Übergabe-Notizen & Kommentare zum Dokument
+                            </h4>
+                            <div className="space-y-2 max-h-40 overflow-y-auto mb-3">
+                              {activeDoc.notes.map(n => (
+                                <div key={n.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                                  <div className="flex justify-between font-bold text-slate-700 mb-0.5">
+                                    <span>{n.author}</span>
+                                    <span className="text-slate-400 font-normal">{n.time}</span>
+                                  </div>
+                                  <p className="text-slate-600">{n.text}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <form onSubmit={addNote} className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Kurze Info für die nächste Person hinterlassen..."
+                                value={newNoteText}
+                                onChange={e => setNewNoteText(e.target.value)}
+                                className="flex-1 text-xs px-3 py-2 rounded-xl border border-slate-200"
+                              />
+                              <button type="submit" className="px-3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700">
+                                Senden
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="lg:col-span-9 bg-white rounded-2xl p-8 text-center">Bitte links ein Dokument auswählen.</div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: TREFFEN, ABGABETERMINE & WHATSAPP/SMS ERINNERUNGEN */}
+            {activeTab === "calendar" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                  <h2 className="text-xl font-bold mb-1">Übersicht: Treffen & Abgabetermine</h2>
+                  <p className="text-xs text-slate-500 mb-4">Mit einem Klick Erinnerungen per WhatsApp oder SMS an die Gruppe schicken</p>
+
+                  <div className="space-y-3">
+                    {data.meetings.map(m => (
+                      <div key={m.id} className="p-4 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-bold text-white ${m.type === "Abgabe" ? "bg-red-500" : "bg-blue-600"}`}>
+                            <i className={`fa-solid ${m.type === "Abgabe" ? "fa-flag-checkered" : "fa-handshake"}`}></i>
+                          </div>
+                          <div>
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${m.type === "Abgabe" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>
+                              {m.type}
+                            </span>
+                            <h3 className="font-bold text-slate-900">{m.title}</h3>
+                            <p className="text-xs text-slate-600">
+                              <i className="fa-regular fa-calendar mr-1"></i> {m.date} um {m.time} Uhr · <i className="fa-solid fa-location-dot ml-1 mr-1"></i> {m.location}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() =>
+                              sendWhatsApp(
+                                "",
+                                `📅 *Erinnerung (${m.type})*: "${m.title}"\n🕒 Wann: ${m.date} um ${m.time} Uhr\n📍 Wo: ${m.location}\nBitte pünktlich sein / rechtzeitig eintragen!`
+                              )
+                            }
+                            className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                          >
+                            <i className="fa-brands fa-whatsapp text-sm"></i> WhatsApp-Erinnerung
+                          </button>
+                          <button
+                            onClick={() =>
+                              sendSMS(
+                                data.members.map(mem => mem.phone).join(","),
+                                `Erinnerung (${m.type}): "${m.title}" am ${m.date} um ${m.time} Uhr (${m.location}).`
+                              )
+                            }
+                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                          >
+                            <i className="fa-solid fa-comment-sms text-sm"></i> SMS an Team
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Neues Treffen / Abgabe eintragen */}
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 h-fit">
+                  <h3 className="font-bold text-lg mb-3">Neuen Termin eintragen</h3>
+                  <form
+                    onSubmit={e => {
+                      e.preventDefault();
+                      if (!newMeetingForm.title || !newMeetingForm.date) return;
+                      setData(prev => ({
+                        ...prev,
+                        meetings: [...prev.meetings, { ...newMeetingForm, id: "mt_" + Date.now() }]
+                      }));
+                      setNewMeetingForm({ title: "", date: "", time: "", location: "", type: "Treffen" });
+                    }}
+                    className="space-y-3"
+                  >
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600">Art des Termins</label>
+                      <select
+                        value={newMeetingForm.type}
+                        onChange={e => setNewMeetingForm({ ...newMeetingForm, type: e.target.value })}
+                        className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white"
+                      >
+                        <option value="Treffen">Gruppentreffen / Besprechung</option>
+                        <option value="Abgabe">Abgabetermin / Deadline</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600">Titel</label>
+                      <input
+                        type="text"
+                        placeholder="z.B. Endbesprechung Präsentation"
+                        value={newMeetingForm.title}
+                        onChange={e => setNewMeetingForm({ ...newMeetingForm, title: e.target.value })}
+                        className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600">Datum</label>
+                        <input
+                          type="date"
+                          value={newMeetingForm.date}
+                          onChange={e => setNewMeetingForm({ ...newMeetingForm, date: e.target.value })}
+                          className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600">Uhrzeit</label>
+                        <input
+                          type="time"
+                          value={newMeetingForm.time}
+                          onChange={e => setNewMeetingForm({ ...newMeetingForm, time: e.target.value })}
+                          className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600">Ort / Link</label>
+                      <input
+                        type="text"
+                        placeholder="z.B. Zoom-Link oder Café"
+                        value={newMeetingForm.location}
+                        onChange={e => setNewMeetingForm({ ...newMeetingForm, location: e.target.value })}
+                        className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                      />
+                    </div>
+                    <button type="submit" className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm">
+                      Termin speichern
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: TEAMMITGLIEDER & TELEFONNUMMERN FÜR SMS/WHATSAPP */}
+            {activeTab === "team" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                  <h2 className="text-xl font-bold mb-1">Gruppenmitglieder & Kontakte</h2>
+                  <p className="text-xs text-slate-500 mb-4">Hinterlegte Nummern für direkte WhatsApp- und SMS-Benachrichtigungen bei Abhängigkeiten</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {data.members.map(m => (
+                      <div key={m.id} className="p-4 rounded-xl border border-slate-200 flex items-center justify-between bg-slate-50">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full ${m.color} text-white flex items-center justify-center font-bold`}>
+                            {m.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-900 text-sm">{m.name}</h3>
+                            <p className="text-xs text-slate-500">{m.role}</p>
+                            <p className="text-xs font-mono text-slate-600 mt-0.5">{m.phone}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => sendWhatsApp(m.phone, `Hallo ${m.name}! 👋`)}
+                            className="p-2 bg-emerald-500 text-white rounded-lg text-xs"
+                          >
+                            <i className="fa-brands fa-whatsapp"></i>
+                          </button>
+                          <button
+                            onClick={() => sendSMS(m.phone, `Hallo ${m.name}!`)}
+                            className="p-2 bg-blue-600 text-white rounded-lg text-xs"
+                          >
+                            <i className="fa-solid fa-comment-sms"></i>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 h-fit">
+                  <h3 className="font-bold text-lg mb-3">Person hinzufügen</h3>
+                  <form
+                    onSubmit={e => {
+                      e.preventDefault();
+                      if (!newMemberForm.name) return;
+                      const colors = ["bg-emerald-600", "bg-blue-600", "bg-purple-600", "bg-amber-600", "bg-rose-600", "bg-indigo-600"];
+                      setData(prev => ({
+                        ...prev,
+                        members: [
+                          ...prev.members,
+                          {
+                            id: "m_" + Date.now(),
+                            name: newMemberForm.name,
+                            role: newMemberForm.role || "Mitglied",
+                            phone: newMemberForm.phone || "+43664...",
+                            color: colors[prev.members.length % colors.length]
+                          }
+                        ]
+                      }));
+                      setNewMemberForm({ name: "", role: "", phone: "" });
+                    }}
+                    className="space-y-3"
+                  >
+                    <input
+                      type="text"
+                      placeholder="Name (z.B. Lisa M.)"
+                      value={newMemberForm.name}
+                      onChange={e => setNewMemberForm({ ...newMemberForm, name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Hauptaufgabe / Rolle"
+                      value={newMemberForm.role}
+                      onChange={e => setNewMemberForm({ ...newMemberForm, role: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Telefonnummer (+43...)"
+                      value={newMemberForm.phone}
+                      onChange={e => setNewMemberForm({ ...newMemberForm, phone: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                    />
+                    <button type="submit" className="w-full py-2.5 bg-slate-900 text-white font-semibold rounded-xl text-sm">
+                      Mitglied speichern
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* MODAL: AUTOMATISCHE BENACHRICHTIGUNG BEI ABHÄNGIGKEIT (PERSON A -> PERSON B) */}
+          {notificationModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+                <div className="flex items-center gap-3 text-emerald-600">
+                  <i className="fa-solid fa-bell text-2xl"></i>
+                  <h3 className="font-bold text-lg text-slate-900">{notificationModal.title}</h3>
+                </div>
+                <p className="text-xs text-slate-600">
+                  Da du deinen Schritt erledigt hast, ist jetzt <strong>{notificationModal.recipient.name}</strong> an der Reihe. Möchtest du direkt eine Benachrichtigung senden?
+                </p>
+                <div className="p-3 bg-slate-100 rounded-xl text-xs font-mono text-slate-700 whitespace-pre-wrap">
+                  {notificationModal.message}
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    onClick={() => {
+                      sendWhatsApp(notificationModal.recipient.phone, notificationModal.message);
+                      setNotificationModal(null);
+                    }}
+                    className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <i className="fa-brands fa-whatsapp text-base"></i> Per WhatsApp senden
+                  </button>
+                  <button
+                    onClick={() => {
+                      sendSMS(notificationModal.recipient.phone, notificationModal.message);
+                      setNotificationModal(null);
+                    }}
+                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <i className="fa-solid fa-comment-sms text-base"></i> Per SMS senden
+                  </button>
+                  <button
+                    onClick={() => setNotificationModal(null)}
+                    className="w-full py-2 text-xs text-slate-500 hover:text-slate-700"
+                  >
+                    Später erinnern
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL: NEUES DOKUMENT ANLEGEN */}
+          {newDocModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <form onSubmit={createNewDocument} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+                <h3 className="font-bold text-lg">Neues Dokument mit Übersichtsblatt</h3>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Dokumenten-Titel</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="z.B. Präsentationsfolien & Handout"
+                    value={newDocForm.title}
+                    onChange={e => setNewDocForm({ ...newDocForm, title: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600">Kategorie</label>
+                    <select
+                      value={newDocForm.category}
+                      onChange={e => setNewDocForm({ ...newDocForm, category: e.target.value })}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white"
+                    >
+                      {data.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600">Abgabetermin</label>
+                    <input
+                      type="date"
+                      value={newDocForm.deadline}
+                      onChange={e => setNewDocForm({ ...newDocForm, deadline: e.target.value })}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Kurzbeschreibung</label>
+                  <input
+                    type="text"
+                    placeholder="Worum geht es in diesem Dokument?"
+                    value={newDocForm.description}
+                    onChange={e => setNewDocForm({ ...newDocForm, description: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                  />
+                </div>
+                <div className="flex gap-2 justify-end pt-2">
+                  <button type="button" onClick={() => setNewDocModal(false)} className="px-4 py-2 text-xs text-slate-600">Abbrechen</button>
+                  <button type="submit" className="px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl">Anlegen</button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
